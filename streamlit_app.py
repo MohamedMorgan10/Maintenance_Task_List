@@ -1,9 +1,29 @@
+import subprocess
+import sys
 import streamlit as st
+
+# --- AUTO-INSTALLER BLOCK ---
+# This forces the Streamlit server to install missing packages on the fly
+def install_package(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+try:
+    import gspread
+except ModuleNotFoundError:
+    with st.spinner("Installing gspread..."):
+        install_package('gspread')
+    import gspread
+
+try:
+    from google.oauth2.service_account import Credentials
+except ModuleNotFoundError:
+    with st.spinner("Installing google-auth..."):
+        install_package('google-auth')
+    from google.oauth2.service_account import Credentials
+
 import pandas as pd
 import datetime
 import uuid
-import gspread
-from google.oauth2.service_account import Credentials
 import json
 
 # --- GOOGLE SHEETS CONFIGURATION ---
