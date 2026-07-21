@@ -1,44 +1,20 @@
-import subprocess
-import sys
 import streamlit as st
-
-# --- AUTO-INSTALLER BLOCK ---
-# This forces the Streamlit server to install missing packages on the fly
-def install_package(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-try:
-    import gspread
-except ModuleNotFoundError:
-    with st.spinner("Installing gspread..."):
-        install_package('gspread')
-    import gspread
-
-try:
-    from google.oauth2.service_account import Credentials
-except ModuleNotFoundError:
-    with st.spinner("Installing google-auth..."):
-        install_package('google-auth')
-    from google.oauth2.service_account import Credentials
-
 import pandas as pd
 import datetime
 import uuid
+import gspread
+from google.oauth2.service_account import Credentials
 import json
 
 # --- GOOGLE SHEETS CONFIGURATION ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1brbbJmWgFCSp70X0yKQo2QYTUrNtd6bNKwIpfM-su5c/edit?usp=sharing"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1brbbJmWgFCSp70X0yKQo2QYTUrNtd6bNKwIpfM-su5c/edit?usp=sharing" # <-- UPDATE THIS
 
 # Authenticate securely using Streamlit Secrets
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 try:
-    # Load the JSON string from Streamlit secrets and convert it to a dictionary
     creds_dict = json.loads(st.secrets["gcp_service_account_json"])
-    
-    # Authorize using the dictionary instead of a file
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     gc = gspread.authorize(credentials)
-    
     sh = gc.open_by_url(SHEET_URL)
     worksheet = sh.sheet1
 except Exception as e:
@@ -49,11 +25,9 @@ except Exception as e:
 st.set_page_config(page_title="Delta Plants Task Tracker", page_icon="📋", layout="wide")
 st.title("📋 Delta Plants Maintenance Task Tracker")
 
-# --- HELPER FUNCTIONS ---
 def get_status_bulb(due_date):
     if pd.isna(due_date) or due_date == "":
         return ""
-    # Ensure due_date is a datetime.date object for calculation
     if isinstance(due_date, str):
         try:
             due_date = datetime.datetime.strptime(due_date, "%Y-%m-%d").date()
@@ -77,13 +51,11 @@ def ensure_columns(df):
         if col not in df.columns:
             df[col] = ""
             
-    # Replace empty states with 'Active'
     df['State'] = df['State'].replace("", "Active")
     df['ID'] = df['ID'].apply(lambda x: f"T-{str(uuid.uuid4())[:6].upper()}" if x == "" else x)
     return df
 
 def load_data():
-    """Reads real-time data directly from Google Sheets."""
     try:
         data = worksheet.get_all_records()
         if not data:
@@ -92,11 +64,8 @@ def load_data():
         
         df = pd.DataFrame(data)
         df = ensure_columns(df)
-        
-        # Ensure dates are strings for pandas displaying
         df['Due Date'] = df['Due Date'].astype(str)
         
-        # Recalculate bulbs automatically for active tasks so they are always current
         mask = df['State'] == 'Active'
         if not df[mask].empty:
             df.loc[mask, 'Status'] = df.loc[mask, 'Due Date'].apply(get_status_bulb)
@@ -106,36 +75,24 @@ def load_data():
         return pd.DataFrame()
 
 def save_data(df):
-    """Writes data instantly back to Google Sheets."""
     try:
-        # Convert all NaN/NaT values to empty strings to avoid JSON serialization errors
         clean_df = df.fillna("").astype(str)
-        
-        # Format the data as a list of lists for gspread
         data_to_upload = [clean_df.columns.values.tolist()] + clean_df.values.tolist()
-        
         worksheet.clear()
         worksheet.update(values=data_to_upload)
     except Exception as e:
         st.error(f"Failed to save data to Google Sheets: {e}")
 
-# --- MAIN APP EXECUTION ---
-# Pull fresh data on every interaction (real-time sync)
 df = load_data()
 
-# Add a manual refresh button for active sessions
 with st.sidebar:
     st.header("🔄 Cloud Sync")
     st.write("Data is synced directly to Google Sheets.")
     if st.button("Refresh Data Now"):
         st.rerun()
 
-# --- MAIN TABS ---
 tab1, tab2, tab3 = st.tabs(["📝 Active Tasks", "✅ Task Completion & Release", "📜 History"])
 
-# ==========================================
-# TAB 1: ADD & VIEW ACTIVE TASKS
-# ==========================================
 with tab1:
     st.subheader("➕ Add a New Task")
     with st.form("task_form", clear_on_submit=True):
@@ -173,7 +130,6 @@ with tab1:
                     'Release Date': [""]
                 })
                 
-                # Fetch latest before writing to prevent overriding a colleague's input
                 latest_df = load_data()
                 updated_df = pd.concat([latest_df, new_task], ignore_index=True)
                 save_data(updated_df)
@@ -190,12 +146,8 @@ with tab1:
         st.dataframe(active_df.drop(columns=['State', 'Completion Notes', 'Release Date']), use_container_width=True, hide_index=True)
 
 
-# ==========================================
-# TAB 2: TASK COMPLETION & RELEASE
-# ==========================================
 with tab2:
     st.subheader("🔓 Release Completed Tasks")
-    st.write("Task owners fill out completion notes, and management authorizes the release to history.")
     
     active_df = df[df['State'] == 'Active']
     
@@ -216,7 +168,6 @@ with tab2:
             if release_button:
                 if manager_password == "Ff@111222333":
                     selected_id = selected_task_string.split(" - ")[0]
-                    
                     latest_df = load_data()
                     
                     if selected_id in latest_df['ID'].values:
@@ -235,13 +186,8 @@ with tab2:
                 else:
                     st.error("Incorrect password. Release denied.")
 
-
-# ==========================================
-# TAB 3: HISTORY
-# ==========================================
 with tab3:
     st.subheader("📜 Task History")
-    
     history_df = df[df['State'] == 'Released']
     
     if history_df.empty:
