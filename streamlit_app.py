@@ -46,7 +46,6 @@ def get_status_bulb(due_date):
         return "🟢 Far Due"
 
 def ensure_columns(df):
-    # Added 'Task Issuer' to the required columns
     required_cols = ['ID', 'Task', 'Task Issuer', 'Plant', 'Sub-plant', 'Task Owner', 'Due Date', 
                      'Category', 'Impact', 'Status', 'State', 'Completion Notes', 'Release Date']
     for col in required_cols:
@@ -138,7 +137,7 @@ with tab1:
         
         with col1:
             task_name = st.text_input("Task Description", placeholder="e.g., Replace extruder bearings")
-            task_issuer = st.text_input("Task Issuer", placeholder="e.g., Mohamed Morgan")
+            task_issuer = st.text_input("Task Issuer", value="Mohamed Alsayed Morgan")
             plants = st.multiselect("Plant", options=["EP", "PC"])
             sub_plants = st.multiselect("Sub-plant", options=["Processing", "Packaging"])
             task_owners = st.multiselect("Task Owner(s)", options=["Saad Gad Alla", "Hamed Nassar"])
