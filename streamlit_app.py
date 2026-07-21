@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 import json
 
 # --- GOOGLE SHEETS CONFIGURATION ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1brbbJmWgFCSp70X0yKQo2QYTUrNtd6bNKwIpfM-su5c/edit?usp=sharing"
 
 # Authenticate securely using Streamlit Secrets
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
