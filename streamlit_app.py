@@ -4,25 +4,30 @@ import datetime
 import uuid
 import gspread
 from google.oauth2.service_account import Credentials
+import json
 
 # --- GOOGLE SHEETS CONFIGURATION ---
-# Replace this with the URL of your shared Google Sheet
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1brbbJmWgFCSp70X0yKQo2QYTUrNtd6bNKwIpfM-su5c/edit?usp=sharing"
 
-# Authenticate with Google
+# Authenticate securely using Streamlit Secrets
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 try:
-    credentials = Credentials.from_service_account_file("service_account.json", scopes=scopes)
+    # Load the JSON string from Streamlit secrets and convert it to a dictionary
+    creds_dict = json.loads(st.secrets["gcp_service_account_json"])
+    
+    # Authorize using the dictionary instead of a file
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     gc = gspread.authorize(credentials)
+    
     sh = gc.open_by_url(SHEET_URL)
     worksheet = sh.sheet1
 except Exception as e:
-    st.error(f"Authentication failed. Check your service_account.json file and Sheet URL. Error: {e}")
+    st.error(f"Authentication failed. Check your Streamlit Secrets. Error: {e}")
     st.stop()
 
 # --- SETTINGS & PAGE CONFIG ---
-st.set_page_config(page_title="Task Tracker", page_icon="📋", layout="wide")
-st.title("📋 Task Tracker & Release Monitor")
+st.set_page_config(page_title="Delta Plants Task Tracker", page_icon="📋", layout="wide")
+st.title("📋 Delta Plants Maintenance Task Tracker")
 
 # --- HELPER FUNCTIONS ---
 def get_status_bulb(due_date):
