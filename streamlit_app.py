@@ -94,7 +94,7 @@ with st.sidebar:
         st.rerun()
 
 # --- MAIN TABS ---
-tab1, tab2, tab3, tab4 = st.tabs(["📝 Active Tasks", "🛠️ Task Execution", "🔒 Manager Release", "📜 History"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Active Tasks", "📈 Track Tasks", "🛠️ Task Execution", "🔒 Manager Release", "📜 History"])
 
 # ==========================================
 # TAB 1: ACTIVE TASKS (LIST FIRST, THEN ADD)
@@ -176,9 +176,61 @@ with tab1:
                 st.rerun()
 
 # ==========================================
-# TAB 2: TASK EXECUTION (Hamed / Saad)
+# TAB 2: TRACK TASKS
 # ==========================================
 with tab2:
+    st.subheader("📈 Task Tracking & Metrics")
+    
+    # Expand task owners (in case multiple owners are assigned to one task) for accurate counting
+    expanded_df = df.copy()
+    expanded_df['Task Owner'] = expanded_df['Task Owner'].fillna("").str.split(', ')
+    expanded_df = expanded_df.explode('Task Owner')
+    expanded_df['Task Owner'] = expanded_df['Task Owner'].str.strip()
+    expanded_df = expanded_df[expanded_df['Task Owner'] != ""] # Remove empty owners
+
+    # Calculate active and closed tasks per owner
+    active_counts = expanded_df[expanded_df['State'] == 'Active']['Task Owner'].value_counts().reset_index()
+    active_counts.columns = ['Task Owner', 'Active Tasks']
+    
+    closed_counts = expanded_df[expanded_df['State'] == 'Released']['Task Owner'].value_counts().reset_index()
+    closed_counts.columns = ['Task Owner', 'Closed Tasks']
+    
+    # Merge metrics into one table
+    metrics_df = pd.merge(active_counts, closed_counts, on='Task Owner', how='outer').fillna(0)
+    if not metrics_df.empty:
+        metrics_df['Active Tasks'] = metrics_df['Active Tasks'].astype(int)
+        metrics_df['Closed Tasks'] = metrics_df['Closed Tasks'].astype(int)
+    
+    col_m1, col_m2 = st.columns([1, 2])
+    with col_m1:
+        st.markdown("**Tasks per Owner**")
+        if metrics_df.empty:
+            st.info("No data to calculate metrics.")
+        else:
+            st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("📅 Active Tasks Sorted by Nearest Due Date")
+    
+    active_tasks = df[df['State'] == 'Active'].copy()
+    
+    if active_tasks.empty:
+        st.info("No active tasks to display.")
+    else:
+        # Sort by due date (closest dates first)
+        active_tasks['Sort Date'] = pd.to_datetime(active_tasks['Due Date'], errors='coerce')
+        active_tasks = active_tasks.sort_values(by='Sort Date', ascending=True).drop(columns=['Sort Date'])
+        
+        st.dataframe(
+            active_tasks.drop(columns=['State', 'Completion Notes', 'Release Date']), 
+            use_container_width=True, 
+            hide_index=True
+        )
+
+# ==========================================
+# TAB 3: TASK EXECUTION (Hamed / Saad)
+# ==========================================
+with tab3:
     st.subheader("🛠️ Task Execution")
     st.write("Task owners: Fill out completion notes to submit the task for managerial confirmation.")
     
@@ -216,9 +268,9 @@ with tab2:
                         st.error("Task ID not found.")
 
 # ==========================================
-# TAB 3: MANAGER RELEASE
+# TAB 4: MANAGER RELEASE
 # ==========================================
-with tab3:
+with tab4:
     st.subheader("🔒 Manager Release")
     st.write("Review tasks pending confirmation and authorize release to history.")
     
@@ -260,9 +312,9 @@ with tab3:
                     st.error("Incorrect password. Release denied.")
 
 # ==========================================
-# TAB 4: HISTORY
+# TAB 5: HISTORY
 # ==========================================
-with tab4:
+with tab5:
     st.subheader("📜 Task History")
     history_df = df[df['State'] == 'Released']
     
