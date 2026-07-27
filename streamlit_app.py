@@ -56,6 +56,14 @@ except Exception as e:
 
 st.title(f"📋 Delta Plants {st.session_state.department} Task Tracker")
 
+# --- DYNAMIC OWNER LIST ---
+if st.session_state.department == "Maintenance":
+    owner_list = ["Saad Gad Alla", "Hamed Nassar"]
+elif st.session_state.department == "Production":
+    owner_list = ["Emad Eldeeb", "Fouad Elnemr", "Mohamed Sobhy"]
+else:
+    owner_list = []
+
 # --- HELPER FUNCTIONS ---
 def get_status_bulb(due_date):
     if pd.isna(due_date) or due_date == "":
@@ -160,7 +168,7 @@ with tab1:
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     search_query = col_f1.text_input("🔍 Search Task Description")
     plant_filter = col_f2.multiselect("Filter by Plant", options=["EP", "PC"])
-    owner_filter = col_f3.multiselect("Filter by Owner", options=["Saad Gad Alla", "Hamed Nassar"])
+    owner_filter = col_f3.multiselect("Filter by Owner", options=owner_list)
     issuer_filter = col_f4.text_input("Filter by Issuer")
 
     # Apply filters
@@ -194,7 +202,7 @@ with tab1:
             task_issuer = st.text_input("Task Issuer", value="Mohamed Alsayed Morgan")
             plants = st.multiselect("Plant", options=["EP", "PC"])
             sub_plants = st.multiselect("Sub-plant", options=["Processing", "Packaging"])
-            task_owners = st.multiselect("Task Owner(s)", options=["Saad Gad Alla", "Hamed Nassar"])
+            task_owners = st.multiselect("Task Owner(s)", options=owner_list)
             
         with col2:
             due_date = st.date_input("Due Date", value=datetime.date.today())
@@ -280,7 +288,7 @@ with tab2:
         )
 
 # ==========================================
-# TAB 3: TASK EXECUTION (Hamed / Saad)
+# TAB 3: TASK EXECUTION
 # ==========================================
 with tab3:
     st.subheader("🛠️ Task Execution")
