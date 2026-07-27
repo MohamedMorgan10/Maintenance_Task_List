@@ -332,7 +332,7 @@ with tab3:
 # ==========================================
 with tab4:
     st.subheader("🔒 Manager Release")
-    st.write("Review tasks pending confirmation and authorize release to history.")
+    st.write("Review tasks pending confirmation. You can authorize release to history or return them to the owner if not completed correctly.")
     
     pending_df = df[df['State'] == 'Pending Confirmation']
     
@@ -344,10 +344,16 @@ with tab4:
         st.divider()
         with st.form("release_form", clear_on_submit=True):
             pending_task_options = pending_df['ID'] + " - " + pending_df['Task']
-            selected_pending_task = st.selectbox("Select Task to Authorize", options=pending_task_options)
+            selected_pending_task = st.selectbox("Select Task to Authorize or Return", options=pending_task_options)
             
             manager_password = st.text_input("Manager Password", type="password")
-            release_button = st.form_submit_button("Authorize & Release Task")
+            
+            # Using columns to place the two buttons side by side
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                release_button = st.form_submit_button("✅ Authorize & Release Task")
+            with col_b2:
+                return_button = st.form_submit_button("❌ Return Task to Owner")
             
             if release_button:
                 if manager_password == "Ff@111222333":
@@ -368,7 +374,31 @@ with tab4:
                     else:
                         st.error("Task ID not found.")
                 else:
-                    st.error("Incorrect password. Release denied.")
+                    st.error("Incorrect password. Action denied.")
+                    
+            if return_button:
+                if manager_password == "Ff@111222333":
+                    selected_id = selected_pending_task.split(" - ")[0]
+                    
+                    latest_all_df = load_all_data()
+                    
+                    if selected_id in latest_all_df['ID'].values:
+                        idx = latest_all_df.index[latest_all_df['ID'] == selected_id].tolist()[0]
+                        
+                        # Return task to active state
+                        latest_all_df.at[idx, 'State'] = 'Active'
+                        
+                        # Recalculate status bulb based on due date
+                        due_date_str = latest_all_df.at[idx, 'Due Date']
+                        latest_all_df.at[idx, 'Status'] = get_status_bulb(due_date_str)
+                        
+                        save_data(latest_all_df)
+                        st.warning(f"Task {selected_id} has been returned to the active task list.")
+                        st.rerun()
+                    else:
+                        st.error("Task ID not found.")
+                else:
+                    st.error("Incorrect password. Action denied.")
 
 # ==========================================
 # TAB 5: HISTORY
