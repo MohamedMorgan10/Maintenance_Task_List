@@ -6,6 +6,39 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 
+# --- SETTINGS & PAGE CONFIG ---
+st.set_page_config(page_title="Delta Plants Task Tracker", page_icon="📋", layout="wide")
+
+# --- SESSION STATE & LOGIN LOGIC ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.department = ""
+
+if not st.session_state.logged_in:
+    st.title("🔐 Department Login")
+    st.write("Please select your department and enter the password to access your secure workspace.")
+    
+    with st.form("login_form"):
+        dept_choice = st.selectbox("Department", ["Maintenance", "Production"])
+        pwd_input = st.text_input("Password", type="password")
+        login_btn = st.form_submit_button("Login")
+        
+        if login_btn:
+            if dept_choice == "Maintenance" and pwd_input == "main":
+                st.session_state.logged_in = True
+                st.session_state.department = "Maintenance"
+                st.rerun()
+            elif dept_choice == "Production" and pwd_input == "prod":
+                st.session_state.logged_in = True
+                st.session_state.department = "Production"
+                st.rerun()
+            else:
+                st.error("Incorrect password. Please try again.")
+    
+    # Stop the rest of the script from running until logged in
+    st.stop()
+
+
 # --- GOOGLE SHEETS CONFIGURATION ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1brbbJmWgFCSp70X0yKQo2QYTUrNtd6bNKwIpfM-su5c/edit?usp=sharing"
 
@@ -21,9 +54,7 @@ except Exception as e:
     st.error(f"Authentication failed. Check your Streamlit Secrets. Error: {e}")
     st.stop()
 
-# --- SETTINGS & PAGE CONFIG ---
-st.set_page_config(page_title="Delta Plants Task Tracker", page_icon="📋", layout="wide")
-st.title("📋 Delta Plants Maintenance Task Tracker")
+st.title(f"📋 Delta Plants {st.session_state.department} Task Tracker")
 
 # --- HELPER FUNCTIONS ---
 def get_status_bulb(due_date):
@@ -46,21 +77,26 @@ def get_status_bulb(due_date):
         return "🟢 Far Due"
 
 def ensure_columns(df):
-    required_cols = ['ID', 'Task', 'Task Issuer', 'Plant', 'Sub-plant', 'Task Owner', 'Due Date', 
+    required_cols = ['ID', 'Department', 'Task', 'Task Issuer', 'Plant', 'Sub-plant', 'Task Owner', 'Due Date', 
                      'Category', 'Impact', 'Status', 'State', 'Completion Notes', 'Release Date']
     for col in required_cols:
         if col not in df.columns:
-            df[col] = ""
+            # If Department column is missing from old data, default it to Maintenance
+            if col == 'Department':
+                df[col] = 'Maintenance'
+            else:
+                df[col] = ""
             
     df['State'] = df['State'].replace("", "Active")
     df['ID'] = df['ID'].apply(lambda x: f"T-{str(uuid.uuid4())[:6].upper()}" if x == "" else x)
     return df
 
-def load_data():
+def load_all_data():
+    """Loads ALL data from the sheet (needed for saving without overwriting other departments)"""
     try:
         data = worksheet.get_all_records()
         if not data:
-            return pd.DataFrame(columns=['ID', 'Task', 'Task Issuer', 'Plant', 'Sub-plant', 'Task Owner', 'Due Date', 
+            return pd.DataFrame(columns=['ID', 'Department', 'Task', 'Task Issuer', 'Plant', 'Sub-plant', 'Task Owner', 'Due Date', 
                                          'Category', 'Impact', 'Status', 'State', 'Completion Notes', 'Release Date'])
         
         df = pd.DataFrame(data)
@@ -75,7 +111,15 @@ def load_data():
         st.error(f"Error loading Google Sheets data: {e}")
         return pd.DataFrame()
 
+def load_dept_data():
+    """Loads only the data for the currently logged-in department"""
+    df = load_all_data()
+    if not df.empty:
+        return df[df['Department'] == st.session_state.department].copy()
+    return df
+
 def save_data(df):
+    """Writes data instantly back to Google Sheets."""
     try:
         clean_df = df.fillna("").astype(str)
         data_to_upload = [clean_df.columns.values.tolist()] + clean_df.values.tolist()
@@ -85,9 +129,18 @@ def save_data(df):
         st.error(f"Failed to save data to Google Sheets: {e}")
 
 # --- MAIN APP EXECUTION ---
-df = load_data()
+# Pull fresh department data on every interaction
+df = load_dept_data()
 
 with st.sidebar:
+    st.header("👤 User Profile")
+    st.write(f"Logged in as: **{st.session_state.department}**")
+    if st.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.department = ""
+        st.rerun()
+        
+    st.divider()
     st.header("🔄 Cloud Sync")
     st.write("Data is synced directly to Google Sheets.")
     if st.button("Refresh Data Now"):
@@ -126,7 +179,8 @@ with tab1:
     if filtered_df.empty:
         st.info("No active tasks match your filters.")
     else:
-        st.dataframe(filtered_df.drop(columns=['State', 'Completion Notes', 'Release Date']), use_container_width=True, hide_index=True)
+        # Hide Department column from the UI to keep it clean
+        st.dataframe(filtered_df.drop(columns=['State', 'Completion Notes', 'Release Date', 'Department']), use_container_width=True, hide_index=True)
 
     st.divider()
 
@@ -155,6 +209,7 @@ with tab1:
             else:
                 new_task = pd.DataFrame({
                     'ID': [f"T-{str(uuid.uuid4())[:6].upper()}"],
+                    'Department': [st.session_state.department],
                     'Task': [task_name],
                     'Task Issuer': [task_issuer],
                     'Plant': [", ".join(plants)],
@@ -169,10 +224,11 @@ with tab1:
                     'Release Date': [""]
                 })
                 
-                latest_df = load_data()
-                updated_df = pd.concat([latest_df, new_task], ignore_index=True)
-                save_data(updated_df)
-                st.success("Task added successfully!")
+                # Fetch ALL latest data (both departments) before appending so we don't overwrite the other dept
+                latest_all_df = load_all_data()
+                updated_all_df = pd.concat([latest_all_df, new_task], ignore_index=True)
+                save_data(updated_all_df)
+                st.success(f"Task added successfully to {st.session_state.department} tracker!")
                 st.rerun()
 
 # ==========================================
@@ -181,21 +237,18 @@ with tab1:
 with tab2:
     st.subheader("📈 Task Tracking & Metrics")
     
-    # Expand task owners (in case multiple owners are assigned to one task) for accurate counting
     expanded_df = df.copy()
     expanded_df['Task Owner'] = expanded_df['Task Owner'].fillna("").str.split(', ')
     expanded_df = expanded_df.explode('Task Owner')
     expanded_df['Task Owner'] = expanded_df['Task Owner'].str.strip()
-    expanded_df = expanded_df[expanded_df['Task Owner'] != ""] # Remove empty owners
+    expanded_df = expanded_df[expanded_df['Task Owner'] != ""]
 
-    # Calculate active and closed tasks per owner
     active_counts = expanded_df[expanded_df['State'] == 'Active']['Task Owner'].value_counts().reset_index()
     active_counts.columns = ['Task Owner', 'Active Tasks']
     
     closed_counts = expanded_df[expanded_df['State'] == 'Released']['Task Owner'].value_counts().reset_index()
     closed_counts.columns = ['Task Owner', 'Closed Tasks']
     
-    # Merge metrics into one table
     metrics_df = pd.merge(active_counts, closed_counts, on='Task Owner', how='outer').fillna(0)
     if not metrics_df.empty:
         metrics_df['Active Tasks'] = metrics_df['Active Tasks'].astype(int)
@@ -217,12 +270,11 @@ with tab2:
     if active_tasks.empty:
         st.info("No active tasks to display.")
     else:
-        # Sort by due date (closest dates first)
         active_tasks['Sort Date'] = pd.to_datetime(active_tasks['Due Date'], errors='coerce')
         active_tasks = active_tasks.sort_values(by='Sort Date', ascending=True).drop(columns=['Sort Date'])
         
         st.dataframe(
-            active_tasks.drop(columns=['State', 'Completion Notes', 'Release Date']), 
+            active_tasks.drop(columns=['State', 'Completion Notes', 'Release Date', 'Department']), 
             use_container_width=True, 
             hide_index=True
         )
@@ -251,17 +303,17 @@ with tab3:
                     st.warning("Please provide completion notes before submitting.")
                 else:
                     selected_id = selected_task_string.split(" - ")[0]
-                    latest_df = load_data()
+                    # Must load ALL data to safely update the row without losing the other department
+                    latest_all_df = load_all_data()
                     
-                    if selected_id in latest_df['ID'].values:
-                        idx = latest_df.index[latest_df['ID'] == selected_id].tolist()[0]
+                    if selected_id in latest_all_df['ID'].values:
+                        idx = latest_all_df.index[latest_all_df['ID'] == selected_id].tolist()[0]
                         
-                        # Move state to Pending Confirmation
-                        latest_df.at[idx, 'State'] = 'Pending Confirmation'
-                        latest_df.at[idx, 'Completion Notes'] = completion_notes
-                        latest_df.at[idx, 'Status'] = "⏳ Pending"
+                        latest_all_df.at[idx, 'State'] = 'Pending Confirmation'
+                        latest_all_df.at[idx, 'Completion Notes'] = completion_notes
+                        latest_all_df.at[idx, 'Status'] = "⏳ Pending"
                         
-                        save_data(latest_df)
+                        save_data(latest_all_df)
                         st.success(f"Task {selected_id} submitted for confirmation!")
                         st.rerun()
                     else:
@@ -279,7 +331,6 @@ with tab4:
     if pending_df.empty:
         st.info("No tasks are currently pending confirmation.")
     else:
-        # Display the pending tasks so the manager can review the notes
         st.dataframe(pending_df[['ID', 'Task', 'Task Owner', 'Completion Notes']], use_container_width=True, hide_index=True)
         
         st.divider()
@@ -293,17 +344,17 @@ with tab4:
             if release_button:
                 if manager_password == "Ff@111222333":
                     selected_id = selected_pending_task.split(" - ")[0]
-                    latest_df = load_data()
                     
-                    if selected_id in latest_df['ID'].values:
-                        idx = latest_df.index[latest_df['ID'] == selected_id].tolist()[0]
+                    latest_all_df = load_all_data()
+                    
+                    if selected_id in latest_all_df['ID'].values:
+                        idx = latest_all_df.index[latest_all_df['ID'] == selected_id].tolist()[0]
                         
-                        # Move state to Released
-                        latest_df.at[idx, 'State'] = 'Released'
-                        latest_df.at[idx, 'Release Date'] = str(datetime.date.today())
-                        latest_df.at[idx, 'Status'] = "✅ Completed"
+                        latest_all_df.at[idx, 'State'] = 'Released'
+                        latest_all_df.at[idx, 'Release Date'] = str(datetime.date.today())
+                        latest_all_df.at[idx, 'Status'] = "✅ Completed"
                         
-                        save_data(latest_df)
+                        save_data(latest_all_df)
                         st.success(f"Task {selected_id} successfully released to history!")
                         st.rerun()
                     else:
@@ -321,5 +372,5 @@ with tab5:
     if history_df.empty:
         st.info("No tasks have been released to history yet.")
     else:
-        display_history = history_df.drop(columns=['State'])
+        display_history = history_df.drop(columns=['State', 'Department'])
         st.dataframe(display_history, use_container_width=True, hide_index=True)
